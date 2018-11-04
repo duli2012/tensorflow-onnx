@@ -26,6 +26,8 @@ import PIL.Image
 import tf2onnx
 from tf2onnx.optimizer.transpose_optimizer import TransposeOptimizer
 from tf2onnx.tfonnx import process_tf_graph
+from onnx import helper
+
 
 # pylint: disable=broad-except,logging-not-lazy,unused-argument
 
@@ -174,8 +176,15 @@ class Test(object):
 
     @staticmethod
     def to_onnx(tf_graph, opset=None, shape_override=None):
+        def expand_dims_custom_op_handler(ctx, node, name, args):
+            node.domain = "com.microsoft"
+            return node
+
+        extra_opset = [helper.make_opsetid("com.microsoft", 1)]
+        
         """Convert graph to tensorflow."""
-        return process_tf_graph(tf_graph, continue_on_error=True, verbose=True, opset=opset,
+        return process_tf_graph(tf_graph, continue_on_error=True, verbose=True, opset=opset, extra_opset=extra_opset,
+                                custom_op_handlers={"ExpandDims" : expand_dims_custom_op_handler}, 
                                 target=Test.target, shape_override=shape_override)
 
     def run_caffe2(self, name, model_proto, inputs):

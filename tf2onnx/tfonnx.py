@@ -907,6 +907,9 @@ def expanddims_op(ctx, node, name, args):
     node.set_attr("shape", shape)
     return node
 
+def expand_dims_custom_op_handler(ctx, node, name, args):
+    node.domain = "com.microsoft"
+    return node
 
 def expanddims_op7(ctx, node, name, args):
     shape = ctx.get_shape(node.output[0])
