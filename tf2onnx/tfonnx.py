@@ -1250,9 +1250,9 @@ def matmul_op(ctx, node, name, args):
     if transpose_a != 0:
         transpose = ctx.insert_new_node_on_input(node, "Transpose", node.input[0])
         nodes.insert(0, transpose)
-    if transpose_b != 0:
-        transpose = ctx.insert_new_node_on_input(node, "Transpose", node.input[1])
-        nodes.insert(0, transpose)
+#    if transpose_b != 0:
+#        transpose = ctx.insert_new_node_on_input(node, "Transpose", node.input[1])
+#        nodes.insert(0, transpose)
 
     unsupported = ["a_is_sparse", "b_is_sparse"]
     for i in unsupported:

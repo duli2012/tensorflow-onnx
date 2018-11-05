@@ -320,10 +320,10 @@ class Test(object):
                 optimizer = TransposeOptimizer(onnx_graph, debug)
                 optimizer.optimize()
 
-                model_proto = onnx_graph.make_model("test", self.output_names)
+                model_proto = onnx_graph.make_model("test", self.output_names, optimize=False)
                 print("\tto_onnx", "OK")
                 if debug:
-                    model_proto.dump_graph()
+                    onnx_graph.dump_graph()
                 if onnx_file:
                     self.create_onnx_file(name, model_proto, inputs, onnx_file)
             except Exception as ex:
