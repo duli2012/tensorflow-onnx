@@ -533,8 +533,7 @@ class Graph(object):
         """Dump graph with shapes (helpful for debugging)."""
         for node in self.get_nodes():
             input_names = ["{}{}".format(n, self.get_shape(n)) for n in node.input]
-            if node.type == "MatMul":
-                print("{} {} {} {}".format(node.type, self.get_shape(node.output[0]), node.name, ", ".join(input_names)))
+            print("{} {} {} {}".format(node.type, self.get_shape(node.output[0]), node.name, ", ".join(input_names)))
 
     def follow_inputs(self, node, num, space=""):
         """Follow inputs for (helpful for debugging)."""

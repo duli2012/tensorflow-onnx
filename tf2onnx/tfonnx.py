@@ -377,6 +377,125 @@ def conv_convert_inputs(ctx, node, with_kernel=False, new_kernel_shape=None,
             else:
                 # if input comes from a op, insert transpose op
                 input_name = node.input[idx]
+                shape = ctx.get_shape(input_name)
+                new_shape = spatial_map(shape, NHWC_TO_NCHW)
+                # if channel==1 or h==1&&w==1, do reshape instead of transpose
+                if shape[3]==1 or (shape[1]==1 and shape[2]==1):
+                    shape_name = utils.make_name(node.name)
+                    ctx.make_const(shape_name, "Const", np.array(new_shape, dtype=np.int64))
+                    reshape = ctx.insert_new_node_on_input(node, "Reshape", input_name)
+                    reshape.input.append(shape_name)
+                    nodes.append(reshape)
+                    ctx.set_shape(reshape.output[0], new_shape)
+                else:
+                    transpose = ctx.insert_new_node_on_input(node, "Transpose", input_name)
+                    transpose.set_attr("perm", NHWC_TO_NCHW)
+                    transpose.inserted_nchw = True
+                    ctx.set_shape(transpose.output[0], new_shape)
+                    nodes.append(transpose)
+            parent.data_format = "NCHW"
+
+    # kernel mist to be transposed
+    if with_kernel:
+        parent = node.inputs[1]
+        if node.inputs[1].is_const():
+            # kernel is const - transpose the const
+            if not parent.data_format:
+                val = parent.get_tensor_value()
+                val = val.transpose(HWCN_TO_NCHW)
+                parent.set_tensor_value(val)
+        else:
+            # kernel comes from op, insert transpose op
+            input_name = node.input[1]
+            transpose = ctx.insert_new_node_on_input(node, "Transpose", input_name)
+            transpose.set_attr("perm", HWCN_TO_NCHW)
+            transpose.inserted_nchw = True
+            ctx.copy_shape(input_name, transpose.output[0])
+            new_shape = spatial_map(ctx.get_shape(input_name), HWCN_TO_NCHW)
+            ctx.set_shape(transpose.output[0], new_shape)
+            nodes.append(transpose)
+        parent.data_format = "NCHW"
+
+        # some onnx conv ops require the reshape the kernel (ie. depthwise_conv2d)
+        if new_kernel_shape:
+            if ctx.opset < 5:
+                # old reshape takes new shape as attribute
+                input_name = node.input[1]
+                reshape = ctx.insert_new_node_on_input(node, "Reshape", input_name)
+                reshape.set_attr("shape", new_kernel_shape)
+            else:
+                # new reshape takes new shape as input[1]
+                shape_name = utils.make_name(node.name)
+                ctx.make_const(shape_name, "Const", np.array(new_kernel_shape, dtype=np.int64))
+                input_name = node.input[1]
+                reshape = ctx.insert_new_node_on_input(node, "Reshape", input_name)
+                reshape.input.append(shape_name)
+            ctx.set_shape(reshape.output[0], new_kernel_shape)
+            nodes.append(reshape)
+
+    # insert conv node after inputs
+    nodes.append(node)
+
+    # transpose outputs if needed
+    if node.is_nhwc():
+        for idx in output_indices:
+            nhwc_shape = ctx.get_shape(node.output[idx])
+            output_name = node.output[idx]
+            op_name = utils.make_name(node.name)
+            # if channel==1 or h==1&&w==1, do reshape instead of transpose
+            if nhwc_shape[3]==1 or (nhwc_shape[1]==1 and nhwc_shape[2]==1):
+                reshape = ctx.insert_new_node_on_output("Reshape", output_name, name=op_name)
+                shape_name = utils.make_name(node.name)
+                nchw_shape=spatial_map(nhwc_shape, NHWC_TO_NCHW)
+                ctx.make_const(shape_name, "Const", np.array(nhwc_shape, dtype=np.int64))
+                reshape.input.append(shape_name)
+                nodes.append(reshape)
+                ctx.set_shape(reshape.output[0], nhwc_shape)
+            else:    
+                transpose = ctx.insert_new_node_on_output("Transpose", output_name, name=op_name)
+                transpose.set_attr("perm", NCHW_TO_NHWC)
+                transpose.inserted_nchw = True
+                ctx.set_shape(transpose.output[0], nhwc_shape)
+                nodes.append(transpose)
+            node.data_format = "NCHW"
+    return nodes
+
+'''
+
+def conv_convert_inputs(ctx, node, with_kernel=False, new_kernel_shape=None,
+                        input_indices=None, output_indices=None):
+    """Convert input and kernel from tensorflow to onnx. This maybe require to
+        to insert transpose ops for input, kernel and output unless they are constants
+        and we can transpose the constant.
+        We transpose inputs if they are in NHWC. We always transpose the kernel from
+        HWNC to NCHW. Outputs are transposed if the format is NHWC.
+        Some convolutions like depthwise_conv2d require a reshape of the kernel.
+        Args:
+            ctx: the parent graph
+            node: node of the convolution op
+            with_kernel: transpose the kernel
+            new_kernel_shape: reshape the kernel
+    """
+
+    if input_indices is None:
+        input_indices = [0]
+    if output_indices is None:
+        output_indices = [0]
+
+    nodes = []
+
+    if node.is_nhwc():
+        # transpose input if needed, no need to record shapes on input
+        for idx in input_indices:
+            parent = node.inputs[idx]
+            if node.inputs[idx].is_const():
+                # if input is a constant, transpose that one
+                if not parent.data_format:
+                    val = parent.get_tensor_value()
+                    parent.set_tensor_value(val.transpose(NHWC_TO_NCHW))
+            else:
+                # if input comes from a op, insert transpose op
+                input_name = node.input[idx]
                 transpose = ctx.insert_new_node_on_input(node, "Transpose", input_name)
                 transpose.set_attr("perm", NHWC_TO_NCHW)
                 transpose.inserted_nchw = True
@@ -439,7 +558,7 @@ def conv_convert_inputs(ctx, node, with_kernel=False, new_kernel_shape=None,
             nodes.append(transpose)
             node.data_format = "NCHW"
     return nodes
-
+'''
 
 def add_padding(ctx, node, kernel_shape, strides, dilations=None, spatial=2):
     padding = node.get_attr("padding")
