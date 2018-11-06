@@ -79,6 +79,22 @@ class TransposeOptimizer(object):
             self._g.topological_sort(ops)
 
     def post_optimize_action(self):
+        nodes = self.nodes
+        for op in nodes:
+            if op.type == "Transpose":
+                input_shape = self._g.get_shape(op.input[0])
+                new_shape = []
+                if is_nchw_transpose(op): 
+                    new_shape = [input_shape[0], input_shape[3], input_shape[1], input_shape[2]]
+                if is_nhwc_transpose(op):
+                    new_shape = [input_shape[0], input_shape[2], input_shape[3], input_shape[1]]
+                op_name = utils.make_name("reshape")
+                shape_name = utils.make_name(op_name)
+                self._g.make_const(shape_name, np.array(new_shape, dtype=np.int64))
+                reshape = helper.make_node("Reshape", [op.input[0], shape_name], op.output, name=op_name)
+                reshape_node = Node(reshape, self._g)
+                self._update_graph_nodes([reshape_node], [op], True)
+
         self._g.update_proto()
         self._g.topological_sort(self._g.get_nodes())
 
